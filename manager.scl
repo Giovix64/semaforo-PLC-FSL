@@ -1,0 +1,261 @@
+codice manager
+LINGUAGGIO SCL
+//=========================================================
+//  GESTORE SEMAFORI COMPLETO CON PEDONALE
+//  - nessun giallo–giallo
+//  - pedonale dopo la direzione attiva (S1 o S2)
+//  - ripartenza dalla direzione successiva
+//=========================================================
+
+// VAR richieste:
+// #status : INT;
+// #PedReq : BOOL;
+// #PedAfterS1 : BOOL;  // TRUE se il pedonale dovrà partire dopo S1
+// #PedAfterS2 : BOOL;  // TRUE se il pedonale dovrà partire dopo S2
+// #T, #T_MinimumCycle, #T_pedVerde, #T_pedGiallo, #T_attesa : TON;
+
+//=========================================================
+//  LOGICA DI BASE
+//=========================================================
+
+// Timer minimo per accettare chiamata pedonale (solo a inizio ciclo)
+IF (#status = 0 OR #status = 3) THEN
+    #T_MinimumCycle(IN := TRUE,
+                    PT := T#10s);
+END_IF;
+
+// Richiesta pedonale (latched)
+IF "sem_ped_DB".attivo AND (#status < 7) AND #T_MinimumCycle.Q THEN
+    #PedReq := TRUE;
+END_IF;
+
+// Se c’è richiesta, memorizza da quale direzione parte
+IF #PedReq THEN
+    IF (#status = 0 OR #status = 1) THEN
+        #PedAfterS1 := TRUE;   // pedonale dopo S1
+    ELSIF (#status = 3 OR #status = 4) THEN
+        #PedAfterS2 := TRUE;   // pedonale dopo S2
+    END_IF;
+END_IF;
+
+// Pedonale rosso quando non attivo
+IF #status < 7 THEN
+    "sem_ped_DB".green := FALSE;
+    "sem_ped_DB".yellow := FALSE;
+    "sem_ped_DB".red := TRUE;
+END_IF;
+
+
+//=========================================================
+//  CICLO SEMAFORI AUTO NORMALE
+//=========================================================
+
+// Stato 0 → S1 verde, S2 rosso
+IF #status = 0 THEN
+    "semaforo_DB".green := TRUE;
+    "semaforo_DB".yellow := FALSE;
+    "semaforo_DB".red := FALSE;
+   
+    "semaforo2_DB".green := FALSE;
+    "semaforo2_DB".yellow := FALSE;
+    "semaforo2_DB".red := TRUE;
+   
+    #T(IN := TRUE,
+       PT := T#5s);
+    IF #T.Q THEN
+        #T(IN := FALSE,
+           PT := T#0s);
+        #status := 1;
+    END_IF;
+END_IF;
+
+// Stato 1 → S1 giallo, S2 rosso
+IF #status = 1 THEN
+    "semaforo_DB".green := FALSE;
+    "semaforo_DB".yellow := TRUE;
+    "semaforo_DB".red := FALSE;
+   
+    "semaforo2_DB".green := FALSE;
+    "semaforo2_DB".yellow := FALSE;
+    "semaforo2_DB".red := TRUE;
+   
+    #T(IN := TRUE,
+       PT := T#2s);
+    IF #T.Q THEN
+        #T(IN := FALSE,
+           PT := T#0s);
+        #status := 2;
+    END_IF;
+END_IF;
+
+// Stato 2 → rosso–rosso dopo S1
+IF #status = 2 THEN
+    "semaforo_DB".red := TRUE;
+    "semaforo_DB".yellow := FALSE;
+    "semaforo_DB".green := FALSE;
+   
+    "semaforo2_DB".red := TRUE;
+    "semaforo2_DB".yellow := FALSE;
+    "semaforo2_DB".green := FALSE;
+   
+    #T(IN := TRUE,
+       PT := T#1s);
+    IF #T.Q THEN
+        #T(IN := FALSE,
+           PT := T#0s);
+       
+        // Se pedonale richiesto dopo S1
+        IF #PedAfterS1 THEN
+            #status := 7;
+            #PedAfterS1 := FALSE;
+            #PedReq := FALSE;
+            #T_MinimumCycle(IN := FALSE,
+                            PT := T#0s);
+        ELSE
+            #status := 3;  // altrimenti passa a S2 verde
+        END_IF;
+    END_IF;
+END_IF;
+
+// Stato 3 → S1 rosso, S2 verde
+IF #status = 3 THEN
+    "semaforo_DB".red := TRUE;
+    "semaforo_DB".yellow := FALSE;
+    "semaforo_DB".green := FALSE;
+   
+    "semaforo2_DB".red := FALSE;
+    "semaforo2_DB".yellow := FALSE;
+    "semaforo2_DB".green := TRUE;
+   
+    #T(IN := TRUE,
+       PT := T#5s);
+    IF #T.Q THEN
+        #T(IN := FALSE,
+           PT := T#0s);
+        #status := 4;
+    END_IF;
+END_IF;
+
+// Stato 4 → S1 rosso, S2 giallo
+IF #status = 4 THEN
+    "semaforo_DB".red := TRUE;
+    "semaforo_DB".yellow := FALSE;
+    "semaforo_DB".green := FALSE;
+   
+    "semaforo2_DB".red := FALSE;
+    "semaforo2_DB".yellow := TRUE;
+    "semaforo2_DB".green := FALSE;
+   
+    #T(IN := TRUE,
+       PT := T#2s);
+    IF #T.Q THEN
+        #T(IN := FALSE,
+           PT := T#0s);
+        #status := 5;
+    END_IF;
+END_IF;
+
+// Stato 5 → rosso–rosso dopo S2
+IF #status = 5 THEN
+    "semaforo_DB".red := TRUE;
+    "semaforo2_DB".red := TRUE;
+    "semaforo_DB".yellow := FALSE;
+    "semaforo2_DB".yellow := FALSE;
+    "semaforo_DB".green := FALSE;
+    "semaforo2_DB".green := FALSE;
+   
+    #T(IN := TRUE,
+       PT := T#1s);
+    IF #T.Q THEN
+        #T(IN := FALSE,
+           PT := T#0s);
+       
+        // Se pedonale richiesto dopo S2
+        IF #PedAfterS2 THEN
+            #status := 7;
+            #PedAfterS2 := FALSE;
+            #PedReq := FALSE;
+            #T_MinimumCycle(IN := FALSE,
+                            PT := T#0s);
+        ELSE
+            #status := 0;  // ritorna a S1 verde
+        END_IF;
+    END_IF;
+END_IF;
+
+
+//=========================================================
+//  SEQUENZA PEDONALE (STATI 7–9)
+//=========================================================
+
+// Stato 7 → pedonale verde
+IF #status = 7 THEN
+    "semaforo_DB".red := TRUE;
+    "semaforo_DB".yellow := FALSE;
+    "semaforo_DB".green := FALSE;
+   
+    "semaforo2_DB".red := TRUE;
+    "semaforo2_DB".yellow := FALSE;
+    "semaforo2_DB".green := FALSE;
+   
+    "sem_ped_DB".green := TRUE;
+    "sem_ped_DB".yellow := FALSE;
+    "sem_ped_DB".red := FALSE;
+   
+    #T_pedVerde(IN := TRUE,
+                PT := T#5s);
+    IF #T_pedVerde.Q THEN
+        #T_pedVerde(IN := FALSE,
+                    PT := T#0s);
+        #status := 8;
+    END_IF;
+END_IF;
+
+// Stato 8 → pedonale giallo
+IF #status = 8 THEN
+    "sem_ped_DB".green := FALSE;
+    "sem_ped_DB".yellow := TRUE;
+    "sem_ped_DB".red := FALSE;
+   
+    "semaforo_DB".red := TRUE;
+    "semaforo2_DB".red := TRUE;
+   
+    #T_pedGiallo(IN := TRUE,
+                 PT := T#2s);
+    IF #T_pedGiallo.Q THEN
+        #T_pedGiallo(IN := FALSE,
+                     PT := T#0s);
+        #status := 9;
+    END_IF;
+END_IF;
+
+// Stato 9 → rosso–rosso breve e ripartenza corretta
+IF #status = 9 THEN
+    "sem_ped_DB".green := FALSE;
+    "sem_ped_DB".yellow := FALSE;
+    "sem_ped_DB".red := TRUE;
+    "sem_ped_DB".attivo := FALSE;
+   
+    "semaforo_DB".red := TRUE;
+    "semaforo2_DB".red := TRUE;
+   
+    #T_attesa(IN := TRUE,
+              PT := T#1s);
+    IF #T_attesa.Q THEN
+        #T_attesa(IN := FALSE,
+                  PT := T#0s);
+       
+        #T_MinimumCycle(IN := TRUE,
+                        PT := T#10s);
+       
+        // Se il pedonale è partito dopo S1 → ora tocca S2
+        // Se partito dopo S2 → ora tocca S1
+        IF #PedAfterS1 THEN
+            #PedAfterS1 := FALSE;
+            #status := 3; // riprendi da S2 verde
+        ELSE
+            #status := 0; // riprendi da S1 verde
+        END_IF;
+    END_IF;
+END_IF;
+
