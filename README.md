@@ -90,7 +90,7 @@ Questa struttura rende il codice ordinato, leggibile e facilmente modificabile.
 
 Nel video seguente viene mostrato il funzionamento del progetto, con la simulazione del ciclo semaforico e della chiamata pedonale:
 
-🔗 **[Guarda il video del progetto]([https://youtu.be/aAqy0ik9YIc)**
+🔗 **[Guarda il video del progetto](https://youtu.be/aAqy0ik9YIc)**
 
 
 
